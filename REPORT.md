@@ -111,9 +111,10 @@ All joins, filtering, aggregation, ranking, and outputs use Spark. Local
 Pandas-based analysis was rejected because it would not scale to the full IMDb
 tables. Docker Compose is the recommended runtime on Windows because it runs
 Spark on Linux and avoids the missing native Hadoop utility; the same Compose
-stack will host Kafka for the streaming phase. The Docker CLI is available in
-this workspace, but its engine is currently stopped, so the container build and
-full-dataset run have not been verified here.
+stack will host Kafka for the streaming phase. The Spark image built
+successfully, and all six project tests passed in the Docker container. The
+full IMDb dataset has not been downloaded, so actual query outputs remain
+unverified.
 
 ## Validation
 

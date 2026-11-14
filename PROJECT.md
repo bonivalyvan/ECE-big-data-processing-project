@@ -72,8 +72,10 @@ stored in the repository.
 Docker Desktop is installed in the current environment, but its Linux engine
 must be started before containers can run. The Compose Spark service runs Python,
 Java, and PySpark on Linux and mounts the repository at `/workspace`; this
-avoids the native-Windows Hadoop `winutils.exe` requirement and keeps downloaded
-and generated data on the host. Start Docker Desktop, then build the image:
+avoids the native-Windows Hadoop `winutils.exe` requirement. Source, raw data,
+prepared Parquet, and reports are all stored under the repository on the
+primary disk and are visible on the host. Start Docker Desktop, then build the
+image:
 
 ```powershell
 docker compose build spark
@@ -122,6 +124,13 @@ distinct missing keys; multi-valued IMDb references are split before checking.
 These findings are reported rather than silently removed. The current report
 does not yet contain full-dataset counts because the source data has not been
 downloaded into this workspace.
+
+The complete workflow requires `title.basics`, `title.akas`, `title.crew`,
+`title.episode`, `title.principals`, `title.ratings`, and `name.basics`. Their
+combined compressed download was about 2.0 GB on 2026-11-14; allow additional
+space for Parquet outputs and temporary Spark processing. The files are
+downloaded into the host's `data/raw/`, which the Spark container mounts at
+`/workspace/data/raw/`; do not commit them.
 
 ## Phase 3: data exploration
 
