@@ -66,6 +66,13 @@ data files have been added yet.
   python -m pip install -r requirements.txt
   ```
 
+For native Windows, Spark's Hadoop layer also needs a compatible Hadoop
+distribution with `winutils.exe` available under `HADOOP_HOME\bin`. This
+workspace does not currently have that utility, so local Spark transformations
+and reads work, but writing Parquet/CSV outputs fails. Use a configured Hadoop
+installation or run the pipeline in Linux/WSL2. The output integration test is
+skipped on Windows only when `HADOOP_HOME` is not configured.
+
 ### Acquire and prepare the IMDb files
 
 The official IMDb TSVs are large and remain local; they are excluded from Git.
