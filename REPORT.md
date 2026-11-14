@@ -2,19 +2,31 @@
 
 ## Current status
 
-The preparation pipeline and quality checks are implemented, but the official
-IMDb TSV files are not present in the workspace. Therefore, full-dataset
-missingness percentages, the five most-missing columns, and anomaly counts have
-not yet been measured and are intentionally not reported as results.
+The Spark preparation pipeline has completed successfully against the seven
+local IMDb TSV files. It wrote all seven typed Parquet tables to
+`data/processed/`, 39 per-column quality records, five top-missingness records,
+and 11 data-quality issue records under `data/reports/preparation/`. The
+top-five combined null/missing/blank percentages are:
 
-Run instructions and output locations are documented in `PROJECT.md`. The
-generated reports will include:
+| Rank | Column | Absent (%) |
+| ---: | --- | ---: |
+| 1 | `title.akas.attributes` | 99.47 |
+| 2 | `title.basics.endYear` | 98.73 |
+| 3 | `name.basics.deathYear` | 98.32 |
+| 4 | `name.basics.birthYear` | 95.66 |
+| 5 | `title.principals.job` | 80.66 |
+
+Detailed column counts, orphan references, and chronology findings are in the
+generated preparation reports. They contain:
 
 - Per-column row counts and percentages of actual null, IMDb `\N` missing
   markers, blank values, combined missingness, and invalid typed values.
 - The five columns with the highest combined null/missing/blank percentage.
 - Distinct orphan foreign-key reference counts and people whose recorded death
   year precedes their birth year.
+
+The raw TSVs and generated datasets are local and excluded from Git;
+`PROJECT.md` documents how to reproduce the run.
 
 ## Methodological Explanation
 
@@ -43,19 +55,35 @@ normalization and type enforcement.
 
 ## Validation
 
-Focused tests cover missing/blank/invalid values, typed conversion, distinct
-orphan references, and death-before-birth detection. Full-dataset result tables
-remain pending until the official source files are downloaded and the pipeline
-is run.
+Focused Docker tests cover missing/blank/invalid values, typed conversion,
+literal quotes in titles, distinct orphan references, and death-before-birth
+detection. All six preparation tests passed, and the full-dataset pipeline
+completed with success markers for all seven Parquet tables and all three
+preparation reports.
 
 # Data exploration
 
 ## Current status
 
-The Spark exploration queries and synthetic tests are implemented. The IMDb
-Parquet tables are not present, so the real query outputs are pending. Once
-Phase 2 has run, the CSV result folders will be written under
-`data/reports/exploration/`.
+The Spark exploration completed successfully against the prepared IMDb tables.
+All ten CSV result folders were written under `data/reports/exploration/`:
+
+| Output folder | Rows |
+| --- | ---: |
+| `runtime_outliers_by_genre` | 32,341 |
+| `genre_popularity_by_year` | 1,074 |
+| `top_three_genres_by_year` | 138 |
+| `top_three_vs_rest_by_year` | 92 |
+| `directors_one_high_rating_and_low_others` | 1,568 |
+| `series_episode_extremes` | 641 |
+| `actors_multilingual` | 0 |
+| `actors_3plus_languages` | 0 |
+| `actors_early_career_peak` | 9,576 |
+| `multitalented_project_performance` | 167,088 |
+
+Row counts exclude CSV headers. The two language-based actor queries produced
+no qualifying rows in this dataset; this is an observed result, not a pipeline
+failure.
 
 The outputs cover runtime outliers, yearly genre popularity and its top-three
 comparison, qualifying directors and television series, successful
@@ -112,12 +140,13 @@ Pandas-based analysis was rejected because it would not scale to the full IMDb
 tables. Docker Compose is the recommended runtime on Windows because it runs
 Spark on Linux and avoids the missing native Hadoop utility; the same Compose
 stack will host Kafka for the streaming phase. The Spark image built
-successfully, and all six project tests passed in the Docker container. The
-full IMDb dataset has not been downloaded, so actual query outputs remain
-unverified.
+successfully, and all six preparation tests passed in the Docker container.
+The full-dataset query outputs listed above were generated successfully; their
+methodological limitations still apply.
 
 ## Validation
 
 Synthetic Spark data exercises each query's thresholds and expected result
-shape. Full-dataset metrics and result rows remain pending until the IMDb
-tables are available and the pipeline is run.
+shape. Full-dataset metrics and result rows are available in the local
+exploration CSV folders; rerun the documented pipeline after updating the
+source snapshot.

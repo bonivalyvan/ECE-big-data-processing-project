@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import csv
+
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -136,7 +136,7 @@ def _raw_path(input_dir: Path, table: str) -> Path:
 
 
 def _parse_tsv_fields(line: str) -> list[str]:
-    return next(csv.reader([line], delimiter="\t", quotechar='"', doublequote=True))
+    return line.rstrip("\r\n").split("\t")
 
 
 def _parse_tsv_partition(

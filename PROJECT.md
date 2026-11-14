@@ -30,9 +30,9 @@ invalid, or insufficient data.
 ## Planned data and processing
 
 Expected IMDb tables include title basics, title ratings, title crew, title
-episodes, title principals, name basics, and title akas. The actual downloaded
-files and their schemas must be inventoried before processing; no IMDb data is
-currently present in the repository.
+episodes, title principals, name basics, and title akas. The seven source TSVs
+are present locally under `data/raw/` in the current workspace and are excluded
+from Git; a fresh clone must acquire them before processing.
 
 Spark is the required engine for batch preparation, analysis, enrichment
 transformations, and streaming analytics. Data gathering for enrichment may use
@@ -53,7 +53,8 @@ Kafka and consume them with PySpark Structured Streaming.
 
 The directories above contain the Spark preparation and exploration pipelines,
 their tests, and the Docker runner described below. IMDb source data is not
-stored in the repository.
+committed to the repository; local copies are kept under the ignored `data/`
+directory.
 
 ## Phase 2: data preparation
 
@@ -121,9 +122,10 @@ converted to null, and retained as rows rather than silently discarded.
 The implementation profiles every column as a string before type conversion,
 then cleans and enforces schemas with Spark. Orphan references are counted as
 distinct missing keys; multi-valued IMDb references are split before checking.
-These findings are reported rather than silently removed. The current report
-does not yet contain full-dataset counts because the source data has not been
-downloaded into this workspace.
+These findings are reported rather than silently removed. Full-dataset
+preparation and exploration results from the current local source snapshot are
+summarized in `REPORT.md`; detailed CSV outputs remain in the ignored `data/`
+directory.
 
 The complete workflow requires `title.basics`, `title.akas`, `title.crew`,
 `title.episode`, `title.principals`, `title.ratings`, and `name.basics`. Their
