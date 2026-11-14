@@ -1,9 +1,8 @@
-# ECE-big-data-processing-project
-Final Projet for the Big Data processing Class
+# IMDb Big Data Project
 
-## Group 2
-- project member 1, git bonivalyvan
-- project member 2, git Jeromsan
-- project member 3, git merwane-kheloufi
+Apache Spark and Kafka project for IMDb dataset preparation, analytics,
+open-source enrichment, and Wikipedia change-event streaming.
 
-## Installation Guide
+- Read [PROJECT.md](./PROJECT.md) for the agreed analysis definitions and project setup.
+- Read [project_instructions.md](./project_instructions.md) for the complete assignment requirements.
+- Final results and methodology will be documented in [REPORT.md](./REPORT.md).
