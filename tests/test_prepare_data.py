@@ -81,6 +81,20 @@ class PrepareDataTests(unittest.TestCase):
             self.assertEqual(quality["averageRating"]["missing_count"], 1)
             self.assertEqual(quality["averageRating"]["empty_count"], 1)
 
+    def test_tsv_reader_preserves_literal_quotes_in_titles(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "title.akas.tsv"
+            path.write_text(
+                "\t".join(TABLE_COLUMNS["title.akas"])
+                + "\n"
+                + 'tt1\t1\t"Rolling in the Deep Dish\t\\N\t\\N\toriginal\t\\N\t1\n',
+                encoding="utf-8",
+            )
+            frame = read_table(self.spark, Path(directory), "title.akas")
+            self.assertEqual(
+                frame.select("title").first()["title"], '"Rolling in the Deep Dish'
+            )
+
     def test_foreign_key_audit_counts_distinct_orphan_references(self):
         tables = {
             "title.basics": self.spark.createDataFrame(
