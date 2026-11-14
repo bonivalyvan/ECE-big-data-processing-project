@@ -1,3 +1,5 @@
+import csv
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,6 +13,7 @@ from src.prepare_data import (
     detect_foreign_key_issues,
     profile_table,
     read_table,
+    run_preparation,
 )
 
 
@@ -123,6 +126,66 @@ class PrepareDataTests(unittest.TestCase):
         }
         issue = detect_chronology_issues(tables)[0]
         self.assertEqual(issue["affected_count"], 1)
+
+    @unittest.skipIf(
+        os.name == "nt" and not os.environ.get("HADOOP_HOME"),
+        "Local Spark writes on Windows require a Hadoop distribution with winutils.exe.",
+    )
+    def test_preparation_writes_typed_tables_and_quality_reports(self):
+        fixture_rows = {
+            "title.akas": [["tt9", "1", "Alias", "US", "en", "movie", r"\N", "0"]],
+            "title.basics": [
+                ["tt1", "movie", "Example", "Example", "0", "2020", r"\N", "90", "Drama"]
+            ],
+            "title.crew": [],
+            "title.episode": [],
+            "title.principals": [["tt1", "1", "nm9", "actor", r"\N", r"\N"]],
+            "title.ratings": [["tt1", "8.0", "100"]],
+            "name.basics": [["nm1", "Person", "1980", "1970", "actor", r"\N"]],
+        }
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_dir = root / "raw"
+            input_dir.mkdir()
+            for table, columns in TABLE_COLUMNS.items():
+                with (input_dir / f"{table}.tsv").open(
+                    "w", encoding="utf-8", newline=""
+                ) as output:
+                    writer = csv.writer(output, delimiter="\t", lineterminator="\n")
+                    writer.writerow(columns)
+                    writer.writerows(fixture_rows[table])
+
+            output_dir = root / "processed"
+            report_dir = root / "reports"
+            top_five = run_preparation(
+                self.spark, input_dir, output_dir, report_dir
+            )
+
+            self.assertEqual([row["rank"] for row in top_five], [1, 2, 3, 4, 5])
+            self.assertTrue((output_dir / "title.basics" / "_SUCCESS").is_file())
+            issues = self.spark.read.option("header", True).csv(
+                str(report_dir / "data_quality_issues")
+            )
+            issue_counts = {
+                (row["issue_type"], row["table"], row["column"]): int(
+                    row["affected_count"]
+                )
+                for row in issues.collect()
+            }
+            self.assertEqual(
+                issue_counts[("orphan_foreign_key", "title.akas", "titleId")], 1
+            )
+            self.assertEqual(
+                issue_counts[
+                    ("orphan_foreign_key", "title.principals", "nconst")
+                ],
+                1,
+            )
+            self.assertEqual(
+                issue_counts[("death_before_birth", "name.basics", "birthYear,deathYear")],
+                1,
+            )
 
 
 if __name__ == "__main__":
