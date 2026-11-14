@@ -54,6 +54,57 @@ Kafka and consume them with PySpark Structured Streaming.
 The directories above are present, but no source code, configuration, tests, or
 data files have been added yet.
 
+## Phase 2: data preparation
+
+### Prerequisites
+
+- Python 3.13 (the project environment used during setup) and Java 17 or newer.
+- The project virtual environment and dependencies:
+
+  ```powershell
+  .\.venv\Scripts\Activate.ps1
+  python -m pip install -r requirements.txt
+  ```
+
+### Acquire and prepare the IMDb files
+
+The official IMDb TSVs are large and remain local; they are excluded from Git.
+Check available disk space before downloading all seven files. To download the
+complete set:
+
+```powershell
+python -m src.download_imdb --confirm-large-download
+```
+
+To download only one table, omit the confirmation flag and select it explicitly:
+
+```powershell
+python -m src.download_imdb --tables title.basics
+```
+
+Once all seven tables are present in `data/raw/`, run the Spark preparation:
+
+```powershell
+python -m src.prepare_data
+```
+
+The input can contain compressed `.tsv.gz` files or uncompressed `.tsv` files.
+The command writes typed Parquet tables to `data/processed/`, per-column quality
+metrics and the top-five missingness ranking to `data/reports/preparation/`,
+and foreign-key/chronology findings to the same report directory. Existing
+output paths are protected by default; pass `--overwrite` to replace generated
+outputs deliberately. The report's missingness ranking uses the combined
+percentage of actual nulls, IMDb `\N` markers, and blank strings; each category
+is also reported separately. Invalid values for typed columns are counted,
+converted to null, and retained as rows rather than silently discarded.
+
+The implementation profiles every column as a string before type conversion,
+then cleans and enforces schemas with Spark. Orphan references are counted as
+distinct missing keys; multi-valued IMDb references are split before checking.
+These findings are reported rather than silently removed. The current report
+does not yet contain full-dataset counts because the source data has not been
+downloaded into this workspace.
+
 ## Git and AI-tool disclosure
 
 Each implementation task must be developed on its own feature branch. Gemini is
