@@ -1,0 +1,10 @@
+services:
+  spark:
+    build:
+      context: .
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONPATH: /workspace
+    command: ["-m", "src.prepare_data"]

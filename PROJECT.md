@@ -51,8 +51,9 @@ Kafka and consume them with PySpark Structured Streaming.
 | `PROJECT.md` | Setup, execution, and operations guide |
 | `REPORT.md` | Final outputs, metrics, and methodology write-ups |
 
-The directories above are present, but no source code, configuration, tests, or
-data files have been added yet.
+The directories above contain the Spark preparation and exploration pipelines,
+their tests, and the Docker runner described below. IMDb source data is not
+stored in the repository.
 
 ## Phase 2: data preparation
 
@@ -66,12 +67,22 @@ data files have been added yet.
   python -m pip install -r requirements.txt
   ```
 
-For native Windows, Spark's Hadoop layer also needs a compatible Hadoop
-distribution with `winutils.exe` available under `HADOOP_HOME\bin`. This
-workspace does not currently have that utility, so local Spark transformations
-and reads work, but writing Parquet/CSV outputs fails. Use a configured Hadoop
-installation or run the pipeline in Linux/WSL2. The output integration test is
-skipped on Windows only when `HADOOP_HOME` is not configured.
+### Recommended Windows runtime: Docker Compose
+
+Docker Desktop is installed in the current environment, but its Linux engine
+must be started before containers can run. The Compose Spark service runs Python,
+Java, and PySpark on Linux and mounts the repository at `/workspace`; this
+avoids the native-Windows Hadoop `winutils.exe` requirement and keeps downloaded
+and generated data on the host. Start Docker Desktop, then build the image:
+
+```powershell
+docker compose build spark
+```
+
+For native Windows Spark without Docker, a compatible Hadoop distribution with
+`winutils.exe` under `HADOOP_HOME\bin` is required. This workspace has no such
+utility. The focused transformation tests run locally, while the output
+integration test is skipped on Windows only when `HADOOP_HOME` is not configured.
 
 ### Acquire and prepare the IMDb files
 
@@ -80,19 +91,19 @@ Check available disk space before downloading all seven files. To download the
 complete set:
 
 ```powershell
-python -m src.download_imdb --confirm-large-download
+docker compose run --rm spark -m src.download_imdb --confirm-large-download
 ```
 
 To download only one table, omit the confirmation flag and select it explicitly:
 
 ```powershell
-python -m src.download_imdb --tables title.basics
+docker compose run --rm spark -m src.download_imdb --tables title.basics
 ```
 
 Once all seven tables are present in `data/raw/`, run the Spark preparation:
 
 ```powershell
-python -m src.prepare_data
+docker compose run --rm spark -m src.prepare_data
 ```
 
 The input can contain compressed `.tsv.gz` files or uncompressed `.tsv` files.
@@ -112,9 +123,29 @@ These findings are reported rather than silently removed. The current report
 does not yet contain full-dataset counts because the source data has not been
 downloaded into this workspace.
 
+## Phase 3: data exploration
+
+Run this phase after Phase 2 has written all seven prepared Parquet tables:
+
+```powershell
+docker compose run --rm spark -m src.explore_data
+```
+
+The pipeline writes CSV report folders under `data/reports/exploration/`.
+Use `--overwrite` to replace existing exploration outputs. It produces
+per-genre runtime outliers, yearly genre popularity and top-three comparisons,
+director and series results, multilingual and early-career actors, and
+multi-talented project metrics. Without the Docker runner, the same command can
+be run with the project's Python environment on Linux/macOS, or on native
+Windows with the Hadoop utility configured.
+
+The Compose stack currently contains Spark for batch phases. Kafka will be
+added to the same Compose project when the streaming pipeline is implemented;
+this lets the streaming phase share the Linux/Python environment and communicate
+with a local broker over the Compose network.
+
 ## Git and AI-tool disclosure
 
 Each implementation task must be developed on its own feature branch. Gemini is
-to be disclosed as an AI/code-assistance tool in this project documentation; it
-must not be added as a Git commit author or co-author. No commit has been
-created during project setup.
+disclosed as an AI/code-assistance tool used for this project; it must not be
+added as a Git commit author or co-author.
