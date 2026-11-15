@@ -34,6 +34,19 @@ def _page_core_title(value: str) -> str:
     return value.split(" (", 1)[0].strip()
 
 
+def _search_query(target: dict[str, Any], entity_type: str) -> str:
+    if entity_type == "film":
+        title = str(target["title"]).replace('"', " ")
+        return f'"{title}" {target["startYear"]} film'
+    name = target.get("display_name")
+    if not name:
+        return ""
+    birth_year = target.get("birthYear")
+    suffix = f" {birth_year}" if birth_year is not None else ""
+    query_name = str(name).replace('"', " ")
+    return f'"{query_name}"{suffix}'
+
+
 def _search_url(query: str) -> str:
     parameters = {
         "action": "query",
@@ -66,6 +79,43 @@ def _retry_after_seconds(value: str | None) -> float | None:
         if retry_at.tzinfo is None:
             retry_at = retry_at.replace(tzinfo=timezone.utc)
         return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+
+
+def _load_api_response(
+    url: str,
+    opener: Callable[..., Any] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    request_opener = opener or urlopen
+    request = Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+    )
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            with request_opener(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if "error" in payload:
+                error = payload["error"]
+                if (
+                    error.get("code") in RETRYABLE_API_ERROR_CODES
+                    and attempt < MAX_ATTEMPTS - 1
+                ):
+                    sleep(min(2**attempt, 60))
+                    continue
+                raise RuntimeError(f"Wikipedia API error: {error}")
+            return payload
+        except HTTPError as error:
+            if error.code not in RETRYABLE_STATUS_CODES or attempt == MAX_ATTEMPTS - 1:
+                raise
+            delay = _retry_after_seconds(error.headers.get("Retry-After"))
+            sleep(delay if delay is not None else min(2**attempt, 60))
+        except URLError:
+            if attempt == MAX_ATTEMPTS - 1:
+                raise
+            sleep(min(2**attempt, 60))
+    raise RuntimeError("Wikipedia request retries were exhausted.")
+
 
 def _search_pages(payload: dict[str, Any]) -> list[dict[str, Any]]:
     pages = payload.get("query", {}).get("pages", [])
