@@ -158,5 +158,4 @@ with a local broker over the Compose network.
 ## Git and AI-tool disclosure
 
 Each implementation task must be developed on its own feature branch. Gemini is
-disclosed as an AI/code-assistance tool used for this project; it must not be
-added as a Git commit author or co-author.
+disclosed as an AI/code-assistance tool used for this project;

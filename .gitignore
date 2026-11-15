@@ -10,4 +10,5 @@ __pycache__/
 # IMDb source files and generated local outputs
 data/raw/
 data/processed/
+data/enrichment/
 data/reports/
