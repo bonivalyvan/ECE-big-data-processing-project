@@ -42,27 +42,6 @@ PRINCIPAL_TARGET_SCHEMA = T.StructType(
         T.StructField("category", T.StringType(), True),
     ]
 )
-WIKIPEDIA_RECORD_SCHEMA = T.StructType(
-    [
-        T.StructField("entity_type", T.StringType(), True),
-        T.StructField("imdb_id", T.StringType(), True),
-        T.StructField("display_name", T.StringType(), True),
-        T.StructField("title", T.StringType(), True),
-        T.StructField("start_year", T.IntegerType(), True),
-        T.StructField("content", T.StringType(), True),
-        T.StructField("source_url", T.StringType(), True),
-        T.StructField("source_type", T.StringType(), True),
-        T.StructField("page_title", T.StringType(), True),
-        T.StructField("page_id", T.LongType(), True),
-        T.StructField("revision_id", T.LongType(), True),
-        T.StructField("retrieved_at", T.StringType(), True),
-        T.StructField("status", T.StringType(), True),
-        T.StructField("note", T.StringType(), True),
-        T.StructField("attribution", T.StringType(), True),
-        T.StructField("license", T.StringType(), True),
-        T.StructField("license_url", T.StringType(), True),
-    ]
-)
 
 
 def build_enrichment_targets(
@@ -156,27 +135,6 @@ def build_enrichment_targets(
         )
     )
     return film_targets, principal_targets
-
-
-def _read_prepared_tables(
-    spark: SparkSession, input_dir: Path
-) -> tuple[DataFrame, DataFrame, DataFrame, DataFrame]:
-    required = ("title.basics", "title.ratings", "title.principals", "name.basics")
-    missing = [str(input_dir / table) for table in required if not (input_dir / table).is_dir()]
-    if missing:
-        raise FileNotFoundError(
-            "Missing prepared IMDb Parquet tables:\n  " + "\n  ".join(missing)
-        )
-    tables = {
-        table: spark.read.parquet(str(input_dir / table)) for table in required
-    }
-    return (
-        tables["title.basics"],
-        tables["title.ratings"],
-        tables["title.principals"],
-        tables["name.basics"],
-    )
-
 
 def run_target_selection(
     spark: SparkSession,
