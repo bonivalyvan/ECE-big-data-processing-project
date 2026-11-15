@@ -110,7 +110,7 @@ def build_imdb_target_index(films: DataFrame, principals: DataFrame) -> DataFram
 
 def annotate_imdb_matches(events: DataFrame, target_index: DataFrame) -> DataFrame:
     return (
-        events.join(target_index, "page_id", "left")
+        events.join(F.broadcast(target_index), "page_id", "left")
         .withColumn("is_imdb_target", F.col("imdb_targets").isNotNull())
     )
 
@@ -141,9 +141,10 @@ def run_stream(
     output_dir: Path,
     checkpoint_dir: Path,
     imdb_output_dir: Path,
-    starting_offsets: str = "earliest",
+    starting_offsets: str = "latest",
 ) -> None:
-    target_index = _read_imdb_target_index(spark, imdb_output_dir)
+    target_index = _read_imdb_target_index(spark, imdb_output_dir).persist()
+    target_index.count()
     kafka_events = (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", bootstrap_servers)
@@ -155,7 +156,7 @@ def run_stream(
     candidates = (
         filter_candidate_changes(parse_kafka_events(kafka_events))
         .withWatermark("event_time", WATERMARK_DELAY)
-        .dropDuplicates(["event_id"])
+        .dropDuplicatesWithinWatermark(["event_id"])
     )
     identified = annotate_imdb_matches(candidates, target_index)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -164,8 +165,14 @@ def run_stream(
     def write_batch(batch: DataFrame, batch_id: int) -> None:
         batch.persist()
         try:
-            candidate_count = batch.count()
-            imdb_match_count = batch.where(F.col("is_imdb_target")).count()
+            metrics = batch.agg(
+                F.count("*").alias("candidate_changes"),
+                F.sum(F.col("is_imdb_target").cast("long")).alias(
+                    "imdb_target_matches"
+                ),
+            ).first()
+            candidate_count = metrics["candidate_changes"]
+            imdb_match_count = metrics["imdb_target_matches"] or 0
             print(
                 json.dumps(
                     {
@@ -185,9 +192,13 @@ def run_stream(
         identified.writeStream.outputMode("append")
         .option("checkpointLocation", str(checkpoint_dir))
         .foreachBatch(write_batch)
+        .trigger(processingTime="5 seconds")
         .start()
     )
-    query.awaitTermination()
+    try:
+        query.awaitTermination()
+    finally:
+        target_index.unpersist()
 
 
 def main() -> None:
@@ -204,7 +215,7 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint-dir",
         type=Path,
-        default=Path("data/streaming/checkpoints/wikipedia-changes"),
+        default=Path("data/streaming/checkpoints/wikipedia-changes-v4"),
     )
     parser.add_argument(
         "--imdb-output-dir",
@@ -212,7 +223,7 @@ def main() -> None:
         default=Path("data/enrichment/processed"),
     )
     parser.add_argument(
-        "--starting-offsets", choices=("earliest", "latest"), default="earliest"
+        "--starting-offsets", choices=("earliest", "latest"), default="latest"
     )
     args = parser.parse_args()
 
@@ -220,6 +231,7 @@ def main() -> None:
     spark = (
         SparkSession.builder.appName("wikipedia-imdb-change-stream")
         .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.sql.shuffle.partitions", "2")
         .config("spark.jars.packages", package_version)
         .getOrCreate()
     )

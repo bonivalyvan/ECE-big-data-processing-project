@@ -56,17 +56,16 @@ def run_producer(
     eventstream_url: str = EVENTSTREAM_URL,
     opener: Callable[..., Any] = urlopen,
     sleep: Callable[[float], None] = time.sleep,
+    producer_factory: Callable[..., Any] | None = None,
+    max_events: int | None = None,
 ) -> None:
-    from kafka import KafkaProducer
+    if max_events is not None and max_events < 1:
+        raise ValueError("max_events must be greater than zero.")
+    if producer_factory is None:
+        from kafka import KafkaProducer
 
-    producer = KafkaProducer(
-        bootstrap_servers=bootstrap_servers.split(","),
-        acks="all",
-        retries=10,
-        value_serializer=lambda value: json.dumps(
-            value, ensure_ascii=False, separators=(",", ":")
-        ).encode("utf-8"),
-    )
+        producer_factory = KafkaProducer
+    producer = None
     retry_delay = 1
     published = 0
     request = Request(
@@ -76,17 +75,31 @@ def run_producer(
     try:
         while True:
             try:
+                if producer is None:
+                    producer = producer_factory(
+                        bootstrap_servers=bootstrap_servers.split(","),
+                        acks="all",
+                        retries=10,
+                        value_serializer=lambda value: json.dumps(
+                            value, ensure_ascii=False, separators=(",", ":")
+                        ).encode("utf-8"),
+                    )
                 LOGGER.info("Connecting to Wikimedia EventStreams.")
                 with opener(request, timeout=75) as response:
                     retry_delay = 1
                     for event in iter_sse_events(response):
                         if publish_event(event, producer, topic):
                             published += 1
+                            if max_events is not None and published >= max_events:
+                                return
                             if published % 100 == 0:
                                 LOGGER.info(
                                     "English Wikipedia events published: %s",
                                     published,
                                 )
+                LOGGER.warning("Wikimedia EventStreams closed; reconnecting.")
+                sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 60)
             except KeyboardInterrupt:
                 raise
             except Exception:
@@ -97,8 +110,9 @@ def run_producer(
                 sleep(retry_delay)
                 retry_delay = min(retry_delay * 2, 60)
     finally:
-        producer.flush(timeout=30)
-        producer.close(timeout=30)
+        if producer is not None:
+            producer.flush(timeout=30)
+            producer.close(timeout=30)
 
 
 def main() -> None:

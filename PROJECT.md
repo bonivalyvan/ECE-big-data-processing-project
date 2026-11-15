@@ -209,12 +209,54 @@ from Git. All target selection, schema enforcement, joins,
 cleaning, and final writes use Spark; only Wikipedia HTTP acquisition runs
 outside Spark.
 
-The Compose stack currently contains Spark for batch phases. Kafka will be
-added to the same Compose project when the streaming pipeline is implemented;
-this lets the streaming phase share the Linux/Python environment and communicate
-with a local broker over the Compose network.
+## Phase 5: Wikipedia change streaming
+
+This phase needs the finalized enrichment Parquet from Phase 4. The producer
+reads Wikimedia's live EventStreams `recentchange` feed and publishes English
+Wikipedia events to the local Kafka topic `wikipedia-recent-changes`. Spark
+Structured Streaming accepts all English-Wikipedia main-namespace `edit` and
+`new` events as candidates, including bot edits, so the 15–30 minute test
+window processes many live events. It separately flags exact page-ID matches
+against the enriched IMDb film and principal pages; unrelated article changes
+remain in the output with `is_imdb_target = false` to make the broad candidate
+filter and its target-specific match rate measurable.
+
+Start the Kafka broker, producer, and Spark consumer with Docker Compose:
+
+```powershell
+docker compose --profile streaming up -d kafka
+docker compose --profile streaming up -d wikipedia-producer spark-streaming
+docker compose --profile streaming ps
+docker compose --profile streaming logs -f --tail 20 spark-streaming
+```
+
+Keep the services running for 15–30 minutes. Spark prints a JSON metric line
+per five-second micro-batch with candidate and exact IMDb target match counts.
+The output events are appended to
+`data/streaming/processed/changes/`; Spark's restart checkpoint is stored in
+`data/streaming/checkpoints/wikipedia-changes-v4/`. Both paths are ignored by
+Git. A fresh query starts at the latest Kafka offset; restarting with the
+checkpoint resumes from its committed offset.
+To stop the test without deleting Kafka data or Spark checkpoints:
+
+```powershell
+docker compose --profile streaming stop spark-streaming wikipedia-producer kafka
+```
+
+The stream uses the EventStreams event timestamp (`meta.dt`) as event time,
+deduplicates by event ID, and applies a ten-minute watermark. Events arriving
+within ten minutes of the current event-time watermark are processed; older
+late events are dropped so the deduplication state remains bounded. Kafka
+offsets and Spark's checkpoint let a stopped consumer resume without
+reprocessing committed offsets. The Kafka topic retains up to 24 hours of
+events for short local interruptions.
+
+After the test, inspect the saved records and group by `is_imdb_target` to
+report the number of candidate changes and exact IMDb-page matches. Include
+the test duration, processed counts, matching counts, and any source
+disconnects in `REPORT.md`.
 
 ## Git and AI-tool disclosure
 
 Each implementation task must be developed on its own feature branch. Gemini is
-disclosed as an AI/code-assistance tool used for this project;
+disclosed as an AI/code-assistance tool used for this project; 
