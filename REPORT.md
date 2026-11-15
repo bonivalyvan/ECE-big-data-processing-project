@@ -1,3 +1,23 @@
+# IMDb Data Engineering, Enrichment, and Streaming: Final Report
+
+## Abstract
+
+This project applies Apache Spark to seven IMDb non-commercial datasets for
+data-quality assessment, exploratory analysis, Wikipedia-based enrichment,
+and live change processing with Kafka and Spark Structured Streaming. The
+preparation stage produced seven typed Parquet tables and identified the five
+most incomplete columns. The exploration stage generated ten analytical
+outputs. Enrichment covered 7,151 selected films and 21,401 film-principal
+associations using human-authored English Wikipedia text with source lineage.
+The live streaming test processed 1,591 candidate changes during a 17-minute
+46-second window; none matched the enriched IMDb Wikipedia page IDs. An
+additional analysis of 223,494 rated feature films found that IMDb alternate
+title region coverage was associated with more votes, but not higher ratings,
+even when comparing within genre and release decade. All quantitative results
+reported here were generated from the local data pipelines; the data,
+reproducibility procedures, and methodological limitations are documented
+below.
+
 # Data preparation
 
 ## Current status
@@ -24,6 +44,17 @@ generated preparation reports. They contain:
 - The five columns with the highest combined null/missing/blank percentage.
 - Distinct orphan foreign-key reference counts and people whose recorded death
   year precedes their birth year.
+
+The 11 issue records comprise ten foreign-key checks and one chronology check.
+Their aggregate findings are:
+
+| Issue | Checks with findings | Affected references or people |
+| --- | ---: | ---: |
+| Orphan foreign-key references | 10 | 6,121 |
+| Death year before birth year | 1 | 28 |
+
+The orphan total is the sum across the ten foreign-key checks; it does not
+represent 6,121 unique people or titles across all checks.
 
 The raw TSVs and generated datasets are local and excluded from Git;
 `PROJECT.md` documents how to reproduce the run.
@@ -91,6 +122,64 @@ multilingual actors, early-career peaks, and multi-role professionals. IMDb
 `title.akas.language` is used as the available language indicator only when
 `isOriginalTitle` is true; this is a proxy, not an authoritative source of a
 film's original production language.
+
+The complete yearly top-three ranking is shown below. The final two columns
+give the top three genres' share of yearly genre vote totals and genre-assigned
+film counts, respectively. Multi-genre films contribute once to each genre.
+
+| Year | Rank 1 | Rank 2 | Rank 3 | Top-three vote share | Top-three film share |
+| ---: | --- | --- | --- | ---: | ---: |
+| 1980 | Drama | Adventure | Horror | 44.3% | 36.9% |
+| 1981 | Adventure | Drama | Horror | 46.5% | 36.1% |
+| 1982 | Drama | Sci-Fi | Action | 43.7% | 39.1% |
+| 1983 | Drama | Action | Adventure | 45.9% | 41.4% |
+| 1984 | Action | Drama | Adventure | 44.1% | 39.8% |
+| 1985 | Comedy | Adventure | Drama | 51.5% | 46.8% |
+| 1986 | Drama | Adventure | Comedy | 46.2% | 47.4% |
+| 1987 | Drama | Comedy | Action | 42.6% | 53.1% |
+| 1988 | Drama | Comedy | Action | 46.8% | 51.8% |
+| 1989 | Comedy | Drama | Adventure | 49.4% | 45.3% |
+| 1990 | Drama | Comedy | Crime | 45.6% | 49.9% |
+| 1991 | Drama | Crime | Comedy | 44.2% | 50.0% |
+| 1992 | Drama | Comedy | Crime | 46.3% | 50.3% |
+| 1993 | Drama | Comedy | Crime | 44.8% | 49.9% |
+| 1994 | Drama | Crime | Comedy | 58.3% | 50.8% |
+| 1995 | Drama | Crime | Comedy | 49.0% | 48.7% |
+| 1996 | Drama | Comedy | Crime | 44.9% | 49.2% |
+| 1997 | Drama | Action | Comedy | 44.1% | 52.6% |
+| 1998 | Drama | Comedy | Crime | 51.5% | 50.6% |
+| 1999 | Drama | Comedy | Crime | 43.6% | 51.1% |
+| 2000 | Drama | Comedy | Adventure | 45.0% | 46.0% |
+| 2001 | Drama | Comedy | Adventure | 42.4% | 46.8% |
+| 2002 | Drama | Adventure | Action | 42.4% | 38.2% |
+| 2003 | Drama | Action | Comedy | 45.5% | 51.1% |
+| 2004 | Drama | Action | Comedy | 41.3% | 48.9% |
+| 2005 | Drama | Comedy | Action | 40.4% | 48.4% |
+| 2006 | Drama | Comedy | Thriller | 42.7% | 47.6% |
+| 2007 | Drama | Comedy | Action | 38.3% | 45.8% |
+| 2008 | Drama | Action | Comedy | 40.4% | 45.8% |
+| 2009 | Drama | Comedy | Action | 41.3% | 45.2% |
+| 2010 | Drama | Action | Adventure | 40.0% | 33.2% |
+| 2011 | Drama | Action | Comedy | 46.1% | 43.0% |
+| 2012 | Drama | Action | Comedy | 42.7% | 42.0% |
+| 2013 | Drama | Action | Comedy | 41.5% | 41.3% |
+| 2014 | Drama | Action | Adventure | 47.0% | 30.8% |
+| 2015 | Drama | Action | Adventure | 46.6% | 31.9% |
+| 2016 | Drama | Action | Adventure | 44.1% | 32.0% |
+| 2017 | Drama | Action | Comedy | 45.0% | 41.8% |
+| 2018 | Drama | Action | Adventure | 44.3% | 32.5% |
+| 2019 | Drama | Action | Comedy | 43.6% | 41.9% |
+| 2020 | Drama | Comedy | Action | 44.7% | 39.0% |
+| 2021 | Drama | Action | Adventure | 46.4% | 32.4% |
+| 2022 | Drama | Action | Comedy | 46.4% | 41.8% |
+| 2023 | Drama | Action | Comedy | 44.9% | 42.8% |
+| 2024 | Drama | Action | Comedy | 42.9% | 41.3% |
+| 2025 | Drama | Action | Comedy | 39.3% | 41.5% |
+
+Drama ranks first in most years; Comedy, Action, and Adventure frequently
+occupy the other two positions. In 2025, the top-three genres represented
+39.3% of genre vote totals and 41.5% of genre-assigned films, compared with
+60.7% and 58.5% for all other genres.
 
 ## Methodological Explanation
 
@@ -328,3 +417,30 @@ proxy; unmeasured factors may explain the association, and the results are
 descriptive rather than causal. An external release/distribution dataset
 could measure availability more directly, but would add source and
 provenance requirements and is not needed for this bounded question.
+
+## Conclusion
+
+The project demonstrates a reproducible Spark workflow for profiling and
+analyzing the full IMDb snapshot, a rate-limited enrichment process with
+explicit lineage, and a live Kafka-to-Spark streaming pipeline. The analyses
+also illustrate the importance of treating missing source data, ambiguous
+matches, proxy measures, and observed zero-match streaming windows as
+limitations to report rather than silently correcting or over-interpreting
+them. Generated row-level outputs and large source data remain local; the
+commands in `PROJECT.md` reproduce them from a fresh checkout.
+
+## Final validation
+
+The full project test suite passed in Docker: 18 tests, with no failures. The
+streaming Compose configuration was validated, and the reported preparation,
+exploration, enrichment, streaming, and open-question results were generated
+from their corresponding pipelines. Large source data and generated output
+files remain local and are excluded from Git; `PROJECT.md` describes how to
+recreate them.
+
+## References
+
+1. IMDb. [IMDb non-commercial datasets](https://developer.imdb.com/non-commercial-datasets/).
+2. MediaWiki. [Action API documentation](https://www.mediawiki.org/wiki/API:Main_page).
+3. Wikimedia. [EventStreams documentation](https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams).
+4. Creative Commons. [Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/).

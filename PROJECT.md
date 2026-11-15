@@ -1,14 +1,21 @@
 # IMDb Big Data Project
 
+## Project Contributors
+
+| Project member | Names | Git username | ECE Email address |
+| --- | --- | --- | --- |
+| Member 1 | Yvan Bonival FEUGANG | bonivalyvan | yvanbonival.feugangkatchessipo@edu.ece.fr |
+| Member 2 | Jeromsan JUDES RAMESH | Jeromsan | jeromsan.judesramesh@edu.ece.fr |
+| Member 3 | Merwane KHELOUFI | merwane-kheloufi | merwane.kheloufi@edu.ece.fr |
+
 ## Project objective
 
 Analyze the IMDb non-commercial datasets with Apache Spark, enrich a bounded
 selection of films and principals from a human-authored open source, and process
 relevant Wikipedia change events with Kafka and PySpark Structured Streaming.
 
-The project follows the requirements in [project_instructions.md](./project_instructions.md).
-This document will become the complete from-scratch execution and operations
-guide as dependencies, data acquisition, and run commands are implemented.
+This document provides the setup, execution order, and operational commands
+needed to reproduce the project from a fresh clone.
 
 ## Agreed analysis definitions
 
@@ -31,8 +38,8 @@ invalid, or insufficient data.
 
 Expected IMDb tables include title basics, title ratings, title crew, title
 episodes, title principals, name basics, and title akas. The seven source TSVs
-are present locally under `data/raw/` in the current workspace and are excluded
-from Git; a fresh clone must acquire them before processing.
+used for this analysis are excluded from Git; a fresh clone must acquire them
+before processing.
 
 Spark is the required engine for batch preparation, analysis, enrichment
 transformations, and streaming analytics. Data gathering for enrichment may use
@@ -56,41 +63,63 @@ their tests, and the Docker runner described below. IMDb source data is not
 committed to the repository; local copies are kept under the ignored `data/`
 directory.
 
+## Phase 1: environment setup
+
+The reproducible runtime is Docker Compose. Install Git and Docker with the
+Compose v2 plugin; on Windows, use Docker Desktop configured for Linux
+containers. An internet connection is required to download IMDb data, access
+Wikimedia, and retrieve the Spark-Kafka connector when streaming is first run.
+
+Clone the repository and build the project image from its root:
+
+```powershell
+git clone https://github.com/bonivalyvan/Big-Data-Test.git
+Set-Location Big-Data-Test
+docker compose build spark
+```
+
+The image includes Python 3.13, Java 17, PySpark, and the dependencies listed
+in `requirements.txt`. Run the test suite before processing data:
+
+```powershell
+docker compose run --rm spark -m unittest discover -s tests
+```
+
+All commands below are run from the repository root. Docker Compose mounts the
+working tree into the container, so downloaded source files and generated
+Parquet/CSV outputs remain on the host under `data/`. The `.gitignore` rules
+exclude these large or reproducible local files from commits.
+
+For development without Docker, install Python 3.13 and Java 17 or newer, then
+create a virtual environment and install the Python dependencies:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Native Windows Spark additionally requires a compatible Hadoop distribution
+and `winutils.exe` under `HADOOP_HOME\bin`; Docker is recommended to avoid this
+platform-specific setup.
+
 ## Phase 2: data preparation
 
-### Prerequisites
+### Runtime and data acquisition
 
-- Python 3.13 (the project environment used during setup) and Java 17 or newer.
-- The project virtual environment and dependencies:
-
-  ```powershell
-  .\.venv\Scripts\Activate.ps1
-  python -m pip install -r requirements.txt
-  ```
-
-### Recommended Windows runtime: Docker Compose
-
-Docker Desktop is installed in the current environment, but its Linux engine
-must be started before containers can run. The Compose Spark service runs Python,
-Java, and PySpark on Linux and mounts the repository at `/workspace`; this
-avoids the native-Windows Hadoop `winutils.exe` requirement. Source, raw data,
-prepared Parquet, and reports are all stored under the repository on the
-primary disk and are visible on the host. Start Docker Desktop, then build the
-image:
+Docker Compose runs Spark on Linux and mounts the repository at `/workspace`,
+avoiding the native-Windows Hadoop requirement. Start Docker Desktop on Windows
+or the Docker Engine on Linux/macOS, then build the image as described in
+Phase 1.
 
 ```powershell
 docker compose build spark
 ```
 
-For native Windows Spark without Docker, a compatible Hadoop distribution with
-`winutils.exe` under `HADOOP_HOME\bin` is required. This workspace has no such
-utility. The focused transformation tests run locally, while the output
-integration test is skipped on Windows only when `HADOOP_HOME` is not configured.
-
-### Acquire and prepare the IMDb files
-
 The official IMDb TSVs are large and remain local; they are excluded from Git.
-Check available disk space before downloading all seven files. To download the
+Check available disk space before downloading all seven files. The compressed
+files totalled about 2.0 GB for the snapshot used in this report; Parquet data
+and temporary Spark processing require additional space. To download the
 complete set:
 
 ```powershell
@@ -284,5 +313,13 @@ existing outputs. Summarize the observed results and limitations in
 
 ## Git and AI-tool disclosure
 
-Each implementation task must be developed on its own feature branch. Gemini is
-disclosed as an AI/code-assistance tool used for this project; 
+Each implementation task is developed on its own feature branch. AI tools
+assisted with implementation and documentation; they were not data sources,
+and their suggestions were reviewed and validated through code execution and
+tests.
+
+| Tool | Tasks supported |
+| --- | --- |
+| Gemini | AI-assisted project undurstanding and phase definition for all the tasks |
+| GitHub Copilot (Copilot SDK in VS Code) | use as support for :  Repository analysis, code drafting , focused test development, and data preparation|
+
