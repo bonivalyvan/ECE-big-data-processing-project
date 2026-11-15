@@ -261,3 +261,70 @@ window, including 1,584 edits and 7 new-page events. The output and checkpoint
 remain local and are ignored by Git. Focused producer and Spark transformation
 tests cover SSE parsing, English-only publishing, Kafka startup retry,
 candidate filtering, and exact page-ID matching.
+
+# Open question: alternate-title region coverage and film performance
+
+## Question and Results
+
+Among IMDb-rated feature films released from 1980 through 2025, are films with
+alternate-title records in more regions associated with more IMDb votes or
+higher ratings? This question is interesting because it compares a broad
+measure of geographic title coverage with both audience attention and user
+ratings, beyond the analyses above. No external data was added; the analysis
+joins the IMDb `title.akas`, `title.basics`, and `title.ratings` tables.
+
+The analysis included 223,494 rated feature films with at least one vote.
+Overall medians show a strong increase in votes with more region-coded
+alternate titles, while median ratings do not increase:
+
+| Alternate-title regions | Films | Median IMDb votes | Median rating | Mean rating |
+| --- | ---: | ---: | ---: | ---: |
+| No recorded region | 258 | 17 | 6.6 | 6.37 |
+| 1 region | 31,920 | 24 | 6.4 | 6.31 |
+| 2–4 regions | 44,141 | 56 | 6.2 | 6.10 |
+| 5+ regions | 147,175 | 332 | 6.1 | 6.01 |
+
+To account for genre and release period, the comparison also matches
+one-region and five-or-more-region films within the same genre and decade.
+Among 106 genre-decade strata with at least ten films in each group, the
+five-or-more-region group had a higher median vote count in all 106 strata.
+The median of the per-stratum vote-count ratios was **15.98**. Median ratings
+were lower for the five-or-more-region group in 68 strata, equal in 8, and
+higher in 30; the median rating difference was **−0.20** points.
+
+The observed association is therefore stronger for audience attention than
+for rating: wider alternate-title region coverage tracks more votes, but does
+not correspond to higher ratings. The overall and stratified CSV results are
+under `data/reports/open_question/`; the detailed report contains 416
+genre-decade-coverage rows and the paired report contains the 106 qualifying
+strata.
+
+## Methodological Explanation
+
+For each IMDb title, geographic coverage is the count of distinct,
+non-empty region codes in its `title.akas` records. The group labels are no
+recorded region, one region, two to four regions, and five or more regions.
+`title.basics` limits the population to movies of at least 60 minutes released
+in 1980–2025 with a genre. The inner join to `title.ratings` retains titles
+with a valid 0–10 rating and at least one vote. Multi-genre films contribute
+once to each listed genre, as in the project's other genre analyses.
+
+Spark reports the distinct film count, mean and median rating, and median vote
+count by region-coverage tier. The detailed table groups by genre and release
+decade. To compare the most distinct coverage groups directly, the paired
+analysis keeps only genre-decade strata with at least ten films in both the
+one-region and five-or-more-region groups; it compares their median-vote
+ratio and median-rating difference. Medians were chosen because IMDb vote
+counts are highly skewed. Stratification reduces, but does not eliminate,
+differences in genre and release period.
+
+An unstratified comparison alone would be simpler but could confound the
+relationship with genre mix and film age. Mean votes would be more sensitive
+to a few blockbuster titles, so medians are used for the principal
+comparison. `title.akas.region` is an available, reproducible IMDb field, but
+it records regions associated with alternate titles, not verified theatrical
+distribution or audience availability. Thus region count is only a coverage
+proxy; unmeasured factors may explain the association, and the results are
+descriptive rather than causal. An external release/distribution dataset
+could measure availability more directly, but would add source and
+provenance requirements and is not needed for this bounded question.

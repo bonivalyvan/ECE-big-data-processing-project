@@ -256,6 +256,32 @@ report the number of candidate changes and exact IMDb-page matches. Include
 the test duration, processed counts, matching counts, and any source
 disconnects in `REPORT.md`.
 
+## Phase 6: open question
+
+The additional analysis asks whether feature-length films with alternate IMDb
+titles recorded in more geographic regions also have more IMDb votes or
+higher ratings, comparing films within the same genre and decade. It joins
+`title.akas`, `title.basics`, and `title.ratings` with Spark. Region coverage is
+the number of distinct non-empty region codes in a film's alternate-title
+records; it is an availability proxy, not verified evidence of theatrical
+distribution. Films are grouped as no recorded region, one region, two to
+four regions, or five or more regions. The analysis uses rated feature films
+from 1980–2025 with at least one vote, and reports medians to reduce the
+influence of highly skewed IMDb vote counts.
+
+Run the analysis after the Phase 2 preparation:
+
+```powershell
+docker compose run --rm spark -m src.open_question
+```
+
+The CSV outputs are written under `data/reports/open_question/`. The detailed
+output is stratified by genre and release decade; the direct comparison
+includes only genre-decade strata with at least ten films in both the
+one-region and five-or-more-region groups. Use `--overwrite` to replace
+existing outputs. Summarize the observed results and limitations in
+`REPORT.md`.
+
 ## Git and AI-tool disclosure
 
 Each implementation task must be developed on its own feature branch. Gemini is
