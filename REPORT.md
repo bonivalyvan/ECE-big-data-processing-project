@@ -140,8 +140,8 @@ Pandas-based analysis was rejected because it would not scale to the full IMDb
 tables. Docker Compose is the recommended runtime on Windows because it runs
 Spark on Linux and avoids the missing native Hadoop utility; the same Compose
 stack will host Kafka for the streaming phase. The Spark image built
-successfully, and all six preparation tests passed in the Docker container.
-The full-dataset query outputs listed above were generated successfully; their
+successfully, and all 12 repository tests passed in the Docker container. The
+full-dataset query outputs listed above were generated successfully; their
 methodological limitations still apply.
 
 ## Validation
@@ -150,3 +150,69 @@ Synthetic Spark data exercises each query's thresholds and expected result
 shape. Full-dataset metrics and result rows are available in the local
 exploration CSV folders; rerun the documented pipeline after updating the
 source snapshot.
+
+# Data enrichment
+
+## Current status
+
+Spark selected 7,151 distinct films and 21,401 film-principal associations for
+enrichment. Those associations represent 11,222 distinct Wikipedia biography
+targets, for 18,373 unique Wikipedia lookups overall. Of the 7,151 films, five
+have no IMDb principal credit, ten have one, and seventeen have two; therefore,
+32 films have fewer than three distinct principal credits. The final coverage
+report documents this source limitation.
+
+The complete collection and Spark finalization have finished. The collector
+wrote one record for each of the 7,151 film and 11,222 principal targets. The
+record statuses are 12,749 `found`, 4,561 `not_found`, 1,062 `ambiguous`, and
+one `empty_extract`. The final outputs contain 7,151 enriched film rows and
+21,401 film-principal association rows. Wikipedia text was available for 5,104
+film summaries and 17,404 principal associations; 2,545 films have a coverage
+note because fewer than three distinct IMDb credits or fewer than three
+matching biographies were available. These counts reflect association rows
+where principals are repeated across films.
+
+## Methodological Explanation
+
+The selection uses the ten largest IMDb vote counts per genre and release
+year, restricted to feature films released in 1980–2025. This applies the
+project's existing popularity measure while giving deterministic tie-breaking
+by rating and IMDb ID. Multi-genre films retain each qualifying genre/rank but
+are fetched once. The first three distinct principals by IMDb credit ordering
+are used, regardless of category, because the requirement asks for principals
+rather than actors only.
+
+English Wikipedia's Action API is the single human-authored source. Search
+results are accepted only when a page title matches the IMDb title or name
+after case/punctuation normalization; ambiguous or nonmatching pages are not
+guessed. The page lead extract is stored as the synopsis/biographical summary.
+Each successful record retains its page URL, page/revision IDs, retrieval time,
+the attribution "Wikipedia contributors," and the CC BY-SA 4.0 license and
+URL. Missing records carry the search URI, status, and a note rather than
+generated or inferred text.
+
+The collector is sequential, enforces at least a one-second interval, honors
+server `Retry-After` responses, retries transient HTTP failures, and appends
+records for safe resumption. The collector also retries the transient
+`cirrussearch-too-busy-error` response. A multilingual search could improve coverage but
+would complicate source matching and attribution; a fuzzy title/name match
+could increase recall but risks incorrect joins. Both alternatives were
+rejected in favor of conservative, auditable matches. All selection,
+cleaning, schema enforcement, joins, and final outputs are handled in Spark;
+only the HTTP acquisition is outside Spark.
+
+## Validation
+
+All 12 repository tests passed in Docker before the full collection, and the
+four focused Wikipedia collector tests passed after adding retry handling for
+the temporary search-overload response. Spark finalization verified complete
+target coverage and wrote the Parquet datasets to
+`data/enrichment/processed/films/` and
+`data/enrichment/processed/principals/`, plus the per-film CSV coverage report
+under `data/reports/enrichment/film_coverage/`. The results are local and
+ignored by Git. The tests include Spark tests for top-vote
+selection, unique IMDb principals, lineage preservation, and coverage notes,
+plus mocked Wikipedia API tests for exact matching and unavailable pages. The
+live pilot verified the API integration. Collection and finalization are
+complete for the current IMDb snapshot; the target manifests and API records
+remain in the ignored local `data/enrichment/` directory.

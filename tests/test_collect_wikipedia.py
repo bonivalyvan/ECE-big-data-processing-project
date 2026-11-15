@@ -50,6 +50,11 @@ class CollectWikipediaTests(unittest.TestCase):
         self.assertEqual(record["content"], "Example Film is a 2000 film.")
         self.assertEqual(record["source_url"], "https://en.wikipedia.org/wiki/Example_Film")
         self.assertEqual(record["revision_id"], 900)
+        self.assertEqual(record["attribution"], "Wikipedia contributors")
+        self.assertEqual(record["license"], "CC BY-SA 4.0")
+        self.assertEqual(
+            record["license_url"], "https://creativecommons.org/licenses/by-sa/4.0/"
+        )
         self.assertEqual(requests[0].get_header("User-agent"), USER_AGENT)
 
     def test_unmatched_page_is_reported_with_search_uri(self):
@@ -75,6 +80,38 @@ class CollectWikipediaTests(unittest.TestCase):
         self.assertEqual(record["status"], "imdb_name_missing")
         self.assertIn("wikipedia.org/w/api.php?", record["source_url"])
         self.assertIsNotNone(record["note"])
+
+    def test_retries_temporary_wikipedia_search_overload(self):
+        responses = iter(
+            [
+                _FakeResponse(
+                    {
+                        "error": {
+                            "code": "cirrussearch-too-busy-error",
+                            "info": "Search is currently too busy.",
+                        }
+                    }
+                ),
+                _FakeResponse({"query": {"pages": []}}),
+            ]
+        )
+        attempts = []
+        delays = []
+
+        def opener(request, timeout):
+            attempts.append(request)
+            return next(responses)
+
+        record = fetch_wikipedia_record(
+            {"tconst": "tt3", "title": "Busy Film", "startYear": 2000},
+            "film",
+            opener=opener,
+            sleep=delays.append,
+        )
+
+        self.assertEqual(record["status"], "not_found")
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(delays, [1])
 
 
 if __name__ == "__main__":
