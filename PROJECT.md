@@ -150,6 +150,65 @@ multi-talented project metrics. Without the Docker runner, the same command can
 be run with the project's Python environment on Linux/macOS, or on native
 Windows with the Hadoop utility configured.
 
+## Phase 4: data enrichment
+
+The enrichment phase selects feature-length movies (`runtimeMinutes >= 60`)
+from 1980–2025. It chooses the ten highest-vote films per genre/year; ties are
+ordered by rating descending and IMDb ID ascending. A film selected for more
+than one genre is fetched once, with all qualifying genre/rank pairs retained.
+For each film, the first three distinct principal IDs by IMDb credit ordering
+are selected, without restricting their credit category.
+
+First create the target manifests using Spark:
+
+```powershell
+docker compose run --rm spark -m src.enrich_data targets
+```
+
+Wikipedia collection uses the English Wikipedia Action API and only accepts
+exact page-title matches to avoid attaching biographies or synopses to a
+different person or film. The saved text is the human-authored lead extract,
+not generated text. Every record retains its Wikipedia page URL and revision
+ID; missing or ambiguous matches retain the API search URI and a status/note.
+The output also records the CC BY-SA attribution notice. The collector makes
+requests sequentially at no less than one per second, honors `Retry-After`,
+retries transient errors, and appends records so an interrupted run can resume.
+
+To check a small sample before collecting all targets:
+
+```powershell
+docker compose run --rm spark -m src.collect_wikipedia --max-entities 5
+```
+
+The full collection resumes from any sample records:
+
+```powershell
+docker compose run --rm spark -m src.collect_wikipedia
+```
+
+The current IMDb snapshot produces 7,151 film targets and 11,222 distinct
+principal targets (18,373 Wikipedia lookups). At the enforced request interval,
+the full API collection takes at least about five hours and may take longer
+because of network latency and retries.
+Run it only when you are ready to leave the collection active. Once it
+finishes, Spark validates lineage, cleans and joins the records, and writes
+Parquet outputs and a per-film principal-coverage report:
+
+```powershell
+docker compose run --rm spark -m src.enrich_data finalize
+```
+
+The final outputs are stored under `data/enrichment/processed/` and
+`data/reports/enrichment/`. The finalization stage refuses to run while any
+target lacks a collection record. Films with fewer than three distinct IMDb
+principals, or fewer than three matching Wikipedia biographies, receive an
+explicit coverage note. Successful text records name Wikipedia contributors
+and retain the CC BY-SA 4.0 license and URL, alongside the source page and
+revision. Enrichment inputs, API responses, and outputs are local and excluded
+from Git. All target selection, schema enforcement, joins,
+cleaning, and final writes use Spark; only Wikipedia HTTP acquisition runs
+outside Spark.
+
 The Compose stack currently contains Spark for batch phases. Kafka will be
 added to the same Compose project when the streaming pipeline is implemented;
 this lets the streaming phase share the Linux/Python environment and communicate

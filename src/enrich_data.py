@@ -58,6 +58,9 @@ WIKIPEDIA_RECORD_SCHEMA = T.StructType(
         T.StructField("retrieved_at", T.StringType(), True),
         T.StructField("status", T.StringType(), True),
         T.StructField("note", T.StringType(), True),
+        T.StructField("attribution", T.StringType(), True),
+        T.StructField("license", T.StringType(), True),
+        T.StructField("license_url", T.StringType(), True),
     ]
 )
 
@@ -115,17 +118,26 @@ def build_enrichment_targets(
         ).alias("selected_for")
     )
 
+    unique_credit_window = Window.partitionBy("tconst", "nconst").orderBy(
+        F.col("ordering").asc_nulls_last(),
+        F.col("category").asc_nulls_last(),
+    )
+    unique_principals = (
+        principals.where(F.col("nconst").isNotNull() & (F.col("nconst") != ""))
+        .withColumn("_credit_rank", F.row_number().over(unique_credit_window))
+        .where(F.col("_credit_rank") == 1)
+        .drop("_credit_rank")
+    )
     principal_window = Window.partitionBy("tconst").orderBy(
         F.col("ordering").asc_nulls_last(),
         F.col("nconst").asc(),
     )
     principal_targets = (
-        principals.join(
+        unique_principals.join(
             film_targets.select("tconst", F.col("title").alias("film_title")),
             "tconst",
             "inner",
         )
-        .where(F.col("nconst").isNotNull() & (F.col("nconst") != ""))
         .withColumn("principal_rank", F.row_number().over(principal_window))
         .where(F.col("principal_rank") <= PRINCIPALS_PER_FILM)
         .join(
@@ -184,12 +196,18 @@ def run_target_selection(
             + "\n  ".join(existing)
         )
 
-    film_count = film_targets.count()
-    principal_count = principal_targets.count()
-    unique_principal_count = principal_targets.select("nconst").distinct().count()
-    mode = "overwrite" if overwrite else "error"
-    film_targets.write.mode(mode).json(str(destinations[0]))
-    principal_targets.write.mode(mode).json(str(destinations[1]))
+    film_targets.persist()
+    principal_targets.persist()
+    try:
+        film_count = film_targets.count()
+        principal_count = principal_targets.count()
+        unique_principal_count = principal_targets.select("nconst").distinct().count()
+        mode = "overwrite" if overwrite else "error"
+        film_targets.write.mode(mode).json(str(destinations[0]))
+        principal_targets.write.mode(mode).json(str(destinations[1]))
+    finally:
+        principal_targets.unpersist()
+        film_targets.unpersist()
     print(f"Selected films: {film_count}")
     print(f"Selected film-principal records: {principal_count}")
     print(f"Unique Wikipedia principal targets: {unique_principal_count}")
@@ -227,11 +245,20 @@ def _assert_collection_complete(
         .join(people, "imdb_id", "left_anti")
         .count()
     )
-    if missing_films or missing_people:
+    invalid_lineage = records.where(
+        F.col("source_url").isNull()
+        | (F.trim(F.col("source_url")) == "")
+        | F.col("source_type").isNull()
+        | (F.trim(F.col("source_type")) == "")
+        | F.col("status").isNull()
+        | (F.trim(F.col("status")) == "")
+    ).count()
+    if missing_films or missing_people or invalid_lineage:
         raise ValueError(
             "Wikipedia collection is incomplete: "
             f"{missing_films} film and {missing_people} principal targets have no record. "
-            "Run src.collect_wikipedia to resume collection."
+            f"{invalid_lineage} records lack source lineage or status. "
+            "Run src.collect_wikipedia to resume collection or repair invalid records."
         )
 
 
@@ -265,24 +292,32 @@ def build_enriched_outputs(
             F.col("wiki.retrieved_at").alias("retrieved_at"),
             F.col("wiki.status").alias("enrichment_status"),
             F.col("wiki.note").alias("enrichment_note"),
+            F.coalesce(
+                F.col("wiki.attribution"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("Wikipedia contributors"),
+                ),
+            ).alias("attribution"),
+            F.coalesce(
+                F.col("wiki.license"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("CC BY-SA 4.0"),
+                ),
+            ).alias("license"),
+            F.coalesce(
+                F.col("wiki.license_url"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("https://creativecommons.org/licenses/by-sa/4.0/"),
+                ),
+            ).alias("license_url"),
         )
         .withColumn(
             "synopsis",
             F.when(F.trim(F.col("synopsis")) == "", F.lit(None).cast("string"))
             .otherwise(F.trim(F.col("synopsis"))),
-        )
-        .withColumn(
-            "license",
-            F.when(
-                F.col("enrichment_status") == "found", F.lit("CC BY-SA 4.0")
-            ),
-        )
-        .withColumn(
-            "license_url",
-            F.when(
-                F.col("enrichment_status") == "found",
-                F.lit("https://creativecommons.org/licenses/by-sa/4.0/"),
-            ),
         )
     )
     principal_records = latest.where(F.col("entity_type") == "principal").alias("wiki")
@@ -310,24 +345,32 @@ def build_enriched_outputs(
             F.col("wiki.retrieved_at").alias("retrieved_at"),
             F.col("wiki.status").alias("enrichment_status"),
             F.col("wiki.note").alias("enrichment_note"),
+            F.coalesce(
+                F.col("wiki.attribution"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("Wikipedia contributors"),
+                ),
+            ).alias("attribution"),
+            F.coalesce(
+                F.col("wiki.license"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("CC BY-SA 4.0"),
+                ),
+            ).alias("license"),
+            F.coalesce(
+                F.col("wiki.license_url"),
+                F.when(
+                    F.col("wiki.status") == "found",
+                    F.lit("https://creativecommons.org/licenses/by-sa/4.0/"),
+                ),
+            ).alias("license_url"),
         )
         .withColumn(
             "biography",
             F.when(F.trim(F.col("biography")) == "", F.lit(None).cast("string"))
             .otherwise(F.trim(F.col("biography"))),
-        )
-        .withColumn(
-            "license",
-            F.when(
-                F.col("enrichment_status") == "found", F.lit("CC BY-SA 4.0")
-            ),
-        )
-        .withColumn(
-            "license_url",
-            F.when(
-                F.col("enrichment_status") == "found",
-                F.lit("https://creativecommons.org/licenses/by-sa/4.0/"),
-            ),
         )
     )
     principal_counts = enriched_principals.groupBy("tconst").agg(

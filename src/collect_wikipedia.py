@@ -21,6 +21,7 @@ USER_AGENT = (
     "(https://github.com/bonivalyvan/Big-Data-Test; IMDb enrichment project)"
 )
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+RETRYABLE_API_ERROR_CODES = {"cirrussearch-too-busy-error"}
 MAX_ATTEMPTS = 5
 
 
@@ -42,7 +43,8 @@ def _search_query(target: dict[str, Any], entity_type: str) -> str:
         return ""
     birth_year = target.get("birthYear")
     suffix = f" {birth_year}" if birth_year is not None else ""
-    return f'"{str(name).replace(chr(34), " ")}"{suffix}'
+    query_name = str(name).replace('"', " ")
+    return f'"{query_name}"{suffix}'
 
 
 def _search_url(query: str) -> str:
@@ -70,7 +72,10 @@ def _retry_after_seconds(value: str | None) -> float | None:
     try:
         return max(0.0, float(value))
     except ValueError:
-        retry_at = parsedate_to_datetime(value)
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
         if retry_at.tzinfo is None:
             retry_at = retry_at.replace(tzinfo=timezone.utc)
         return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
@@ -91,7 +96,14 @@ def _load_api_response(
             with request_opener(request, timeout=30) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             if "error" in payload:
-                raise RuntimeError(f"Wikipedia API error: {payload['error']}")
+                error = payload["error"]
+                if (
+                    error.get("code") in RETRYABLE_API_ERROR_CODES
+                    and attempt < MAX_ATTEMPTS - 1
+                ):
+                    sleep(min(2**attempt, 60))
+                    continue
+                raise RuntimeError(f"Wikipedia API error: {error}")
             return payload
         except HTTPError as error:
             if error.code not in RETRYABLE_STATUS_CODES or attempt == MAX_ATTEMPTS - 1:
@@ -174,6 +186,9 @@ def fetch_wikipedia_record(
         "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "status": "not_found",
         "note": None,
+        "attribution": None,
+        "license": None,
+        "license_url": None,
     }
     if entity_type == "principal" and not target.get("display_name"):
         record["status"] = "imdb_name_missing"
@@ -197,6 +212,13 @@ def fetch_wikipedia_record(
             "page_id": page.get("pageid"),
             "revision_id": revisions[0].get("revid") if revisions else None,
             "status": "found" if extract else "empty_extract",
+            "attribution": "Wikipedia contributors" if extract else None,
+            "license": "CC BY-SA 4.0" if extract else None,
+            "license_url": (
+                "https://creativecommons.org/licenses/by-sa/4.0/"
+                if extract
+                else None
+            ),
             "note": (
                 "Wikipedia lead extract saved as the film synopsis/summary."
                 if entity_type == "film" and extract
@@ -252,6 +274,17 @@ def _load_completed_records(path: Path) -> set[tuple[str, str]]:
             if entity_type not in {"film", "principal"} or not imdb_id:
                 raise ValueError(
                     f"Missing or invalid entity identity in {path} at line {line_number}."
+                )
+            source_url = record.get("source_url")
+            if (
+                not record.get("status")
+                or not record.get("source_type")
+                or not isinstance(source_url, str)
+                or not source_url.strip()
+            ):
+                raise ValueError(
+                    f"Missing enrichment status or source lineage in {path} "
+                    f"at line {line_number}."
                 )
             completed.add((entity_type, imdb_id))
     return completed

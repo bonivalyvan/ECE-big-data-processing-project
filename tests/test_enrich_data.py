@@ -58,6 +58,7 @@ class EnrichDataTests(unittest.TestCase):
                 ("tt11", "nm1", 1, "actor"),
                 ("tt11", "nm3", 3, "writer"),
                 ("tt11", "nm4", 4, "actor"),
+                ("tt11", "nm1", 0, "actor"),
             ],
             "tconst string, nconst string, ordering int, category string",
         )
@@ -125,6 +126,9 @@ class EnrichDataTests(unittest.TestCase):
                     "2026-11-14T00:00:00+00:00",
                     "found",
                     "Wikipedia lead extract saved as the film synopsis/summary.",
+                    None,
+                    None,
+                    None,
                 ),
                 (
                     "principal",
@@ -141,6 +145,9 @@ class EnrichDataTests(unittest.TestCase):
                     "2026-11-14T00:00:00+00:00",
                     "not_found",
                     "No exact Wikipedia page-title match was found in the search results.",
+                    None,
+                    None,
+                    None,
                 ),
             ],
             schema=WIKIPEDIA_RECORD_SCHEMA,
@@ -156,6 +163,7 @@ class EnrichDataTests(unittest.TestCase):
             film["source_url"], "https://en.wikipedia.org/wiki/Example_Film"
         )
         self.assertEqual(film["wikipedia_revision_id"], 11)
+        self.assertEqual(film["attribution"], "Wikipedia contributors")
         self.assertEqual(film["license"], "CC BY-SA 4.0")
         principal = principals.first()
         self.assertEqual(principal["enrichment_status"], "not_found")
