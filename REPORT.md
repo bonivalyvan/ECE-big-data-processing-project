@@ -216,3 +216,48 @@ plus mocked Wikipedia API tests for exact matching and unavailable pages. The
 live pilot verified the API integration. Collection and finalization are
 complete for the current IMDb snapshot; the target manifests and API records
 remain in the ignored local `data/enrichment/` directory.
+
+# Wikipedia change streaming
+
+## Current status
+
+The local Kafka-to-Spark Structured Streaming test ran for 17 minutes 46
+seconds, from 2026-11-15 10:51:10 to 11:08:56 UTC. Spark completed 144
+micro-batches and emitted 1,591 candidate changes: 1,584 edits and 7 new-page
+events. None matched an enriched IMDb film or principal page ID. This is a
+zero-match result for this observation window, not a failure of the stream.
+The producer log contains no EventStreams reconnect or disconnection messages,
+and the Spark container had no restarts during the run.
+
+The stream was limited to English Wikipedia main-namespace `edit` and `new`
+events. This deliberately broad candidate set includes bot changes; exact
+IMDb-page matches are measured separately by Wikipedia page ID. Keeping
+nonmatching candidates in the output makes the candidate volume and exact
+match rate auditable rather than implying every article change relates to IMDb.
+
+## Methodological Explanation
+
+The producer reads the Wikimedia EventStreams `recentchange` SSE feed and
+publishes English Wikipedia events to Kafka. Spark parses `meta.dt` as event
+time, filters the agreed candidate event types and namespace, then
+deduplicates on the event ID with a ten-minute watermark. The watermark bounds
+deduplication state: events arriving later than the allowed event-time delay
+may be dropped. A page is marked as an IMDb target only when its Wikipedia
+page ID exactly matches a page ID in the finalized enriched film or principal
+tables; no title-based or fuzzy matching is applied in the stream.
+
+Kafka retains events for up to 24 hours, while the named Kafka volume stores
+the broker log directory. Spark writes candidate records as Parquet and uses a
+separate checkpoint to resume committed offsets after a restart. The local
+test's candidate and match counts come from the Spark micro-batch metrics and
+were cross-checked against the saved Parquet output.
+
+## Validation
+
+The 17-minute-46-second live test processed 1,591 candidates across 144
+micro-batches, with 0 exact IMDb-page matches and no logged EventStreams
+reconnections. The saved output contains 1,591 records in the observation
+window, including 1,584 edits and 7 new-page events. The output and checkpoint
+remain local and are ignored by Git. Focused producer and Spark transformation
+tests cover SSE parsing, English-only publishing, Kafka startup retry,
+candidate filtering, and exact page-ID matching.

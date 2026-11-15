@@ -9,7 +9,11 @@ from src.stream_wikipedia_changes import (
     filter_candidate_changes,
     parse_kafka_events,
 )
-from src.wikipedia_stream_producer import iter_sse_events, publish_event
+from src.wikipedia_stream_producer import (
+    iter_sse_events,
+    publish_event,
+    run_producer,
+)
 
 
 class _FakeFuture:
@@ -20,10 +24,18 @@ class _FakeFuture:
 class _FakeProducer:
     def __init__(self):
         self.sent = []
+        self.flushed = False
+        self.closed = False
 
     def send(self, topic, key, value):
         self.sent.append((topic, key, value))
         return _FakeFuture()
+
+    def flush(self, timeout):
+        self.flushed = True
+
+    def close(self, timeout):
+        self.closed = True
 
 
 class WikipediaStreamProducerTests(unittest.TestCase):
@@ -52,6 +64,37 @@ class WikipediaStreamProducerTests(unittest.TestCase):
         self.assertEqual(topic, "wikipedia-recent-changes")
         self.assertEqual(key, b"event-1")
         self.assertEqual(value, event)
+
+    def test_retries_kafka_startup_and_closes_after_bounded_publish(self):
+        import io
+
+        event = {"wiki": "enwiki", "meta": {"id": "event-1"}}
+        response = io.BytesIO(
+            b"data: " + json.dumps(event).encode("utf-8") + b"\n\n"
+        )
+        producer = _FakeProducer()
+        factory_calls = []
+        delays = []
+
+        def producer_factory(**kwargs):
+            factory_calls.append(kwargs)
+            if len(factory_calls) == 1:
+                raise RuntimeError("Kafka is not ready yet.")
+            return producer
+
+        run_producer(
+            "kafka:9092",
+            opener=lambda request, timeout: response,
+            sleep=delays.append,
+            producer_factory=producer_factory,
+            max_events=1,
+        )
+
+        self.assertEqual(len(factory_calls), 2)
+        self.assertEqual(delays, [1])
+        self.assertTrue(producer.flushed)
+        self.assertTrue(producer.closed)
+        self.assertEqual(len(producer.sent), 1)
 
 
 class WikipediaStreamTransformTests(unittest.TestCase):
